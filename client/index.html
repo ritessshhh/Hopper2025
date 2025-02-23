@@ -1,54 +1,407 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/css/bootstrap.min.css">
+<html lang="en">
 
-    <!-- jQuery library -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
-    
-    <!-- Latest compiled JavaScript -->
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/js/bootstrap.min.js"></script>
-  </head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wolfie Chat</title>
+  <!-- Bootstrap CSS -->
+  <!-- Inline CSS -->
 
-  <body>
-    <div id="myName">
-      <input type="text" id="usernameInput" placeholder="My name">
-      <input type="button" id="loginBtn" value="Save"></input>
-    </div>
-    <div>
-      <h3><span id="allUsers"></span></h3>
-    </div>
-    <div id="otherElements">
-      <b><span id="showLocalUserName"></span></b>
-      <video id="localVideo" autoplay muted style="width:40%;"></video>
-      <b><span id="showRemoteUserName"></span></b>
-      <video id="remoteVideo" autoplay style="width:40%;"></video>
+  <style>
+    /* Reset and Base Styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-      <br />
-      <div id='callInitiator'>
-          <input id = "callToUsernameInput" 
-          type = "text" placeholder = "username to call"/> 
-          <br/>
-          <button id = "callBtn" class = "btn-success btn">Call</button> 
-          <!-- <button id = "hangUpBtn" class = "btn-danger btn">Hang Up</button>  -->
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f0f2f5;
+    }
+
+    .navbar {
+      width: 100%;
+      height: 60px;
+      background-color: #007bff;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      /* Pushes items to the sides */
+      font-size: 24px;
+      font-weight: bold;
+      padding: 0 20px;
+    }
+
+    #showLocalUserName {
+      font-size: 18px;
+      font-weight: normal;
+    }
+
+
+
+    /* "My Name" Section */
+    #myName {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      width: 350px;
+    }
+
+    #myName h1 {
+      font-size: 22px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 6px;
+    }
+
+    #myName p {
+      font-size: 14px;
+      color: #d9534f;
+      /* Warning color (Bootstrap Danger Red) */
+      font-weight: 500;
+      margin-bottom: 15px;
+    }
+
+
+    #usernameInput {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
+      transition: all 0.3s ease-in-out;
+    }
+
+    #usernameInput:focus {
+      border-color: #007bff;
+      box-shadow: 0px 0px 8px rgba(0, 123, 255, 0.2);
+    }
+
+    #loginBtn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      background-color: #007bff;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin-top: 12px;
+    }
+
+    #loginBtn:hover {
+      background-color: #0056b3;
+    }
+
+
+
+    /* Main Layout Container */
+    .container {
+      display: flex;
+      height: calc(100vh - 60px - 50px);
+      /* Account for navbar and login section */
+    }
+
+    /* Side Panel for Available Users */
+    .side-panel {
+      width: 250px;
+      background-color: #ffffff;
+      border-right: 1px solid #ddd;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .side-panel h3 {
+      margin-bottom: 15px;
+      font-size: 20px;
+      color: #333;
+    }
+
+    .side-panel ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .side-panel li {
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background-color: #e9ecef;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .side-panel li:hover {
+      background-color: #d0d7de;
+    }
+
+    /* Video Call Container */
+    .video-call-container {
+      flex: 1;
+      position: relative;
+      background-color: #e9ecef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* Remote Video (big screen) */
+    #remoteVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    /* Local Video (overlay, smaller) */
+    #localVideo {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 200px;
+      height: 150px;
+      border: 3px solid #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      object-fit: cover;
+      margin-bottom: 30px;
+    }
+
+    /* Input and Button Styling */
+    input[type="text"] {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    button,
+    input[type="button"] {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin: 5px 0;
+    }
+
+    button:hover,
+    input[type="button"]:hover {
+      background-color: #0056b3;
+    }
+
+    /* Call Control Sections */
+    #callInitiator,
+    #callReceiver,
+    #callOngoing {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    #callReceiver,
+    #callOngoing {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    /* Responsive Adjustments */
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+
+      .side-panel {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .video-call-container {
+        height: 100%;
+      }
+
+      #localVideo {
+        width: 150px;
+        height: 100px;
+        bottom: 10px;
+        right: 10px;
+      }
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      /* Pushes content to the top and bottom */
+      height: 100vh;
+      /* Full height */
+      padding-bottom: 10px;
+    }
+
+    #allUsers {
+      flex-grow: 1;
+      /* Allows the list to grow and take available space */
+      overflow-y: auto;
+      /* Scroll if there are many users */
+    }
+
+    #callInitiator {
+      width: 100%;
+      padding: 15px;
+      border-top: 1px solid #ddd;
+      text-align: center;
+      background-color: #fff;
+    }
+
+    #callToUsernameInput {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 10px;
+      /* Space between input and button */
+    }
+
+    #callBtn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 6px;
+      background-color: #28a745;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    #callBtn:hover {
+      background-color: #218838;
+    }
+
+    #allUsers {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    #allUsers li {
+      padding: 10px;
+      margin: 5px 0;
+      background-color: #e9ecef;
+      border-radius: 6px;
+      text-align: center;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    #allUsers li:hover {
+      background-color: #d0d7de;
+    }
+
+    #callControls {
+      margin-bottom: 50px;
+    }
+
+    #answerBtn {
+      background-color: #28a745;
+    }
+
+    #declineBtn,
+    #hangUpBtn {
+      background-color: #d9534f;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Navbar with Greeting -->
+  <nav class="navbar">
+    Wolfie-Chat <span id="showLocalUserName" style="margin-left:20px;"></span>
+  </nav>
+
+  <!-- "My Name" Section (login) -->
+  <div id="myName">
+    <h1>Please enter your username:</h1>
+    <p>You will use this username to make calls.</p>
+    <input type="text" id="usernameInput" placeholder="My name">
+    <input type="button" id="loginBtn" value="Save">
+  </div>
+
+
+  <!-- Other Elements (hidden until login) -->
+  <div id="otherElements" hidden>
+    <div class="container">
+      <!-- Side Panel for Available Users -->
+      <div class="side-panel">
+        <h3>Available Users</h3>
+        <ul id="allUsers">
+          <!-- Dynamically populated user list items go here -->
+        </ul>
+        <div id="callControls">
+          <div id="callInitiator">
+            <input id="callToUsernameInput" type="text" placeholder="Username to call">
+            <button id="callBtn" class="btn btn-success">Call</button>
+          </div>
+          <div id="callReceiver" style="display: none;">
+            <button id="answerBtn" class="btn btn-success">Answer</button>
+            <button id="declineBtn" class="btn btn-danger">Decline</button>
+          </div>
+          <div id="callOngoing" style="display: none;">
+            <button id="hangUpBtn" class="btn btn-danger">Hang Up</button>
+          </div>
+        </div>
       </div>
-      <div id='callReceiver' style="display: none;">
-        
-        <button id = "answerBtn" class = "btn-success btn">Answer</button> 
-        <button id = "declineBtn" class = "btn-danger btn">Decline</button> 
+
+      <div class="video-call-container">
+        <video id="remoteVideo" autoplay></video>
+        <video id="localVideo" autoplay muted></video>
+      </div>
     </div>
-    <div id='callOngoing' style="display: none;">
-      
-      <button id = "hangUpBtn" class = "btn-danger btn">Hang Up</button>
-
   </div>
-      <!-- <input type="button" id="start" onclick="start(true)" value="Start Video"></input>
-      <input type="button" id="Stop" onclick="stop(true)" value="Stop Video"></input> -->
 
-  </div>
+  <!-- jQuery library -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+  <!-- Bootstrap JS -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/js/bootstrap.min.js"></script>
+  <!-- WebRTC Adapter -->
   <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+  <!-- Custom JavaScript -->
   <script src="webrtc.js"></script>
-    
-    
-  </body>
+  <script>
+    $(document).ready(function () {
+      $("#loginBtn").click(function () {
+        var username = $("#usernameInput").val().trim();
+        if (username !== "") {
+          $("#showLocalUserName").text(username); // Show username in navbar
+          $("#myName").fadeOut(); // Hide login section
+          $("#otherElements").fadeIn(); // Show the rest of the page
+        }
+      });
+    });
+  </script>
+
+</body>
+
 </html>
