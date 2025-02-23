@@ -2,8 +2,8 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Wolfie Chat</title>
   <!-- Bootstrap CSS -->
   <!-- Inline CSS -->
@@ -332,6 +332,52 @@
     #hangUpBtn {
       background-color: #d9534f;
     }
+
+    /* Right side for the shirt selection grid */
+    .shirt-selection-container {
+      flex: 0 0 280px;
+      text-align: left;
+    }
+
+    .shirt-selection-container h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .shirt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+      gap: 10px;
+      max-height: 200px;
+      /* limit the height */
+      overflow-y: auto;
+      /* make it scroll if needed */
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 6px;
+      background-color: #f9f9f9;
+    }
+
+    .shirt-option {
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      text-align: center;
+      padding: 5px;
+      background-color: #ffffff;
+    }
+
+    .shirt-option:hover {
+      border-color: #007bff;
+    }
+
+    .shirt-option img {
+      width: 50px;
+      height: 50px;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+    }
   </style>
 </head>
 
@@ -343,12 +389,23 @@
 
   <!-- "My Name" Section (login) -->
   <div id="myName">
-    <h1>Please enter your username:</h1>
-    <p>You will use this username to make calls.</p>
-    <input type="text" id="usernameInput" placeholder="My name">
-    <input type="button" id="loginBtn" value="Save">
-  </div>
+    <!-- Left side: username input -->
+    <div class="login-section-left">
+      <h1>Please enter your username:</h1>
+      <p>You will use this username to make calls.</p>
+      <input type="text" id="usernameInput" placeholder="My name" />
+      <input type="button" id="loginBtn" value="Save" />
+    </div>
 
+    <!-- Right side: shirt selection grid -->
+    <div class="shirt-selection-container">
+      <h3>Select a Shirt (or None)</h3>
+      <div class="shirt-grid" id="shirtGrid">
+        <!-- We'll dynamically populate from JS below or you can hardcode 
+             a few <div> items with <img> + 'None' option -->
+      </div>
+    </div>
+  </div>
 
   <!-- Other Elements (hidden until login) -->
   <div id="otherElements" hidden>
@@ -356,24 +413,22 @@
       <!-- Side Panel for Available Users -->
       <div class="side-panel">
         <h3>Available Users</h3>
-        <ul id="allUsers">
-          <!-- Dynamically populated user list items go here -->
-        </ul>
+        <ul id="allUsers"></ul>
         <div id="callControls">
           <div id="callInitiator">
-            <input id="callToUsernameInput" type="text" placeholder="Username to call">
+            <input id="callToUsernameInput" type="text" placeholder="Username to call" />
             <button id="callBtn" class="btn btn-success">Call</button>
           </div>
-          <div id="callReceiver" style="display: none;">
+          <div id="callReceiver" style="display: none">
             <button id="answerBtn" class="btn btn-success">Answer</button>
             <button id="declineBtn" class="btn btn-danger">Decline</button>
           </div>
-          <div id="callOngoing" style="display: none;">
+          <div id="callOngoing" style="display: none">
             <button id="hangUpBtn" class="btn btn-danger">Hang Up</button>
           </div>
         </div>
       </div>
-
+      <!-- Video call area -->
       <div class="video-call-container">
         <video id="remoteVideo" autoplay></video>
         <video id="localVideo" autoplay muted></video>

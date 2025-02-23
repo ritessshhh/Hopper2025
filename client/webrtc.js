@@ -1,48 +1,133 @@
+// -------------------------------------------------------
+// 1) Setup shirt selection data here (or hard-code in HTML)
+// -------------------------------------------------------
+const availableShirts = [
+  { src: "./images/redpolo.png", label: "Red Polo" },
+  { src: "./images/ABC.png", label: "Blue Polo" },
+  { src: "./images/Christopher-Nolan.png", label: "Yellow T-shirt" },
+  { src: "none", label: "None" }
+];
+
+// We'll track the currently selected shirt path (or "none")
+let selectedShirtSrc = "none";
+
+// Generate clickable shirt options in the grid:
+window.addEventListener("DOMContentLoaded", () => {
+  const shirtGrid = document.getElementById("shirtGrid");
+  availableShirts.forEach((shirt) => {
+    const div = document.createElement("div");
+    div.className = "shirt-option";
+    div.dataset.src = shirt.src;
+
+    if (shirt.src === "none") {
+      // "None" box
+      div.textContent = "None";
+    } else {
+      // Show image + a small label
+      const img = document.createElement("img");
+      img.src = shirt.src;
+      const lbl = document.createElement("div");
+      lbl.style.fontSize = "12px";
+      lbl.textContent = shirt.label;
+
+      div.appendChild(img);
+      div.appendChild(lbl);
+    }
+
+    div.addEventListener("click", () => {
+      selectedShirtSrc = shirt.src;
+      // Optional: highlight the selected div
+      document.querySelectorAll(".shirt-option").forEach((el) => {
+        el.style.borderColor = "transparent";
+      });
+      div.style.borderColor = "#007bff";
+    });
+
+    shirtGrid.appendChild(div);
+  });
+});
+
+// -------------------------------------------------------
+// 2) Signaling + WebRTC
+// -------------------------------------------------------
 var localVideo, localStream;
 var remoteVideo;
 var yourConn;
 var serverConnection;
-var connectionState;
-
 var name;
 var connectedUser;
 
+// ICE servers
 var peerConnectionConfig = {
-  'iceServers': [
-    { 'urls': 'stun:stun.stunprotocol.org:3478' },
-    { 'urls': 'stun:stun.l.google.com:19302' }
+  iceServers: [
+    { urls: "stun:stun.stunprotocol.org:3478" },
+    { urls: "stun:stun.l.google.com:19302" }
   ]
 };
 
-// Connect to the signaling server
-serverConnection = new WebSocket('wss://' + window.location.hostname + ':8443');
+serverConnection = new WebSocket("wss://" + window.location.hostname + ":8443");
 serverConnection.onopen = function () {
   console.log("Connected to the signaling server");
 };
 serverConnection.onmessage = gotMessageFromServer;
+serverConnection.onerror = function (err) {
+  console.log("Got error", err);
+};
 
 // Hide call interface until login
-document.getElementById('otherElements').hidden = true;
+document.getElementById("otherElements").hidden = true;
 
-var usernameInput = document.querySelector('#usernameInput');
-var usernameShow = document.querySelector('#showLocalUserName');
-var showAllUsers = document.querySelector('#allUsers');
-var loginBtn = document.querySelector('#loginBtn');
-var callToUsernameInput = document.querySelector('#callToUsernameInput');
-var callBtn = document.querySelector('#callBtn');
-var hangUpBtn = document.querySelector('#hangUpBtn');
-var answerBtn = document.querySelector('#answerBtn');
-var declineBtn = document.querySelector('#declineBtn');
+var usernameInput = document.querySelector("#usernameInput");
+var usernameShow = document.querySelector("#showLocalUserName");
+var showAllUsers = document.querySelector("#allUsers");
+var loginBtn = document.querySelector("#loginBtn");
+var callToUsernameInput = document.querySelector("#callToUsernameInput");
+var callBtn = document.querySelector("#callBtn");
+var hangUpBtn = document.querySelector("#hangUpBtn");
+var answerBtn = document.querySelector("#answerBtn");
+var declineBtn = document.querySelector("#declineBtn");
 
-// Login when the user clicks the button 
+// When the user clicks "Save" to log in
 loginBtn.addEventListener("click", function () {
-  name = usernameInput.value;
-  usernameShow.innerHTML = "Hello, " + name;
+  name = usernameInput.value.trim();
   if (name.length > 0) {
+    // Attempt to login via signaling
     send({ type: "login", name: name });
   }
 });
 
+// If login is successful on the server side
+function handleLogin(success, allUsers) {
+  if (!success) {
+    alert("Oops...try a different username");
+  } else {
+    console.log("All available users", allUsers);
+    updateUserList(allUsers);
+
+    usernameShow.innerHTML = "Hello, " + name;
+
+    // Switch UI
+    document.getElementById("myName").hidden = true;
+    document.getElementById("otherElements").hidden = false;
+
+    // Setup local and remote video
+    localVideo = document.getElementById("localVideo");
+    remoteVideo = document.getElementById("remoteVideo");
+
+    // Get camera + audio
+    var constraints = { video: true, audio: true };
+    if (navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia(constraints)
+        .then(getUserMediaSuccess)
+        .catch(errorHandler);
+    } else {
+      alert("Your browser does not support getUserMedia API");
+    }
+  }
+}
+
+// Render the user list in the side panel
 function updateUserList(users) {
   showAllUsers.innerHTML = "";
   users.forEach(function (user) {
@@ -52,40 +137,11 @@ function updateUserList(users) {
   });
 }
 
-function handleLogin(success, allUsers) {
-  if (!success) {
-    alert("Ooops...try a different username");
-  } else {
-    console.log('All available users', allUsers);
-    updateUserList(allUsers);
-
-    // Use the existing video elements.
-    localVideo = document.getElementById('localVideo');
-    remoteVideo = document.getElementById('remoteVideo');
-    document.getElementById('myName').hidden = true;
-    document.getElementById('otherElements').hidden = false;
-
-    var constraints = { video: true, audio: true };
-    if (navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia(constraints)
-        .then(getUserMediaSuccess)
-        .catch(errorHandler);
-    } else {
-      alert('Your browser does not support getUserMedia API');
-    }
-  }
-}
-
+// ---------------------------------------
+// 3) Pose & Affine transform logic
+// ---------------------------------------
+// We reuse one Image() object for the chosen shirt
 let shirtImg = new Image();
-shirtImg.onload = () => {
-  console.log("Shirt image loaded:", shirtImg.width, shirtImg.height);
-};
-shirtImg.onerror = (e) => {
-  console.log("Failed to load shirt image", e);
-};
-shirtImg.src = "./images/redpolo.png"
-
-// --- Helper functions for affine transform computation ---
 
 // Invert a 3x3 matrix represented as an array of 9 numbers (row-major order)
 function invert3x3(m) {
@@ -121,16 +177,11 @@ function multiplyMatrixVector(m, v) {
  * Given three source points and three destination points (each as [x, y]),
  * compute the affine transform parameters [a, b, c, d, e, f] so that:
  *
- *   x' = a * x + c * y + e
- *   y' = b * x + d * y + f
- *
- * @param {Array} srcPts - Array of 3 points, each [x, y]
- * @param {Array} dstPts - Array of 3 points, each [x, y]
- * @returns {Array|null}  - Affine parameters [a, b, c, d, e, f] or null if not invertible.
+ *   x' = a*x + c*y + e
+ *   y' = b*x + d*y + f
  */
 function computeAffineTransform(srcPts, dstPts) {
-  // Build matrix X from source points:
-  // Each row is [x, y, 1]
+  // Build matrix X from source points: each row is [x, y, 1]
   const X = [
     srcPts[0][0], srcPts[0][1], 1,
     srcPts[1][0], srcPts[1][1], 1,
@@ -139,52 +190,50 @@ function computeAffineTransform(srcPts, dstPts) {
   const invX = invert3x3(X);
   if (!invX) return null;
 
-  // For x-coordinates: solve for [a, c, e]
+  // Solve for x-coordinates => [a, c, e]
   const dx = [dstPts[0][0], dstPts[1][0], dstPts[2][0]];
   const solX = multiplyMatrixVector(invX, dx);
 
-  // For y-coordinates: solve for [b, d, f]
+  // Solve for y-coordinates => [b, d, f]
   const dy = [dstPts[0][1], dstPts[1][1], dstPts[2][1]];
   const solY = multiplyMatrixVector(invX, dy);
 
-  // Return the affine matrix parameters
-  // Canvas transform expects: a, b, c, d, e, f where:
-  // x' = a*x + c*y + e, y' = b*x + d*y + f.
+  // Return [a, b, c, d, e, f] for canvas transform
   return [solX[0], solY[0], solX[1], solY[1], solX[2], solY[2]];
 }
 
-
-// ----------------- getUserMediaSuccess -----------------
-
+// ---------------------------------------
+// 4) getUserMediaSuccess
+// ---------------------------------------
 function getUserMediaSuccess(stream) {
   localStream = stream;
 
-  // Create a hidden video element for the raw stream.
-  var rawVideo = document.createElement('video');
-  rawVideo.setAttribute('playsinline', '');
+  // Create a hidden video element for the raw stream
+  var rawVideo = document.createElement("video");
+  rawVideo.setAttribute("playsinline", "");
   rawVideo.muted = true;
   rawVideo.srcObject = stream;
-  rawVideo.style.display = 'none';
+  rawVideo.style.display = "none";
   document.body.appendChild(rawVideo);
   rawVideo.play();
 
-  // Create a canvas to process the raw stream.
-  var processingCanvas = document.createElement('canvas');
-  var canvasCtx = processingCanvas.getContext('2d');
+  // Create a canvas to process the raw stream
+  var processingCanvas = document.createElement("canvas");
+  var canvasCtx = processingCanvas.getContext("2d");
 
-  // Local video element to display the processed stream.
-  var localVideo = document.getElementById("localVideo") || document.createElement("video");
+  // Local video element to display the processed stream
+  var localVideo = document.getElementById("localVideo");
   localVideo.autoplay = true;
   localVideo.playsinline = true;
-  document.body.appendChild(localVideo);
 
   rawVideo.onloadedmetadata = function () {
     processingCanvas.width = rawVideo.videoWidth;
     processingCanvas.height = rawVideo.videoHeight;
 
-    // Initialize MediaPipe Pose.
+    // Initialize MediaPipe Pose
     const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
     pose.setOptions({
       modelComplexity: 1,
@@ -193,106 +242,146 @@ function getUserMediaSuccess(stream) {
       minTrackingConfidence: 0.5
     });
 
+    // Listen for results
     pose.onResults(function (results) {
-      // Draw the raw frame.
+      // 1) Draw the raw camera frame
       canvasCtx.clearRect(0, 0, processingCanvas.width, processingCanvas.height);
       canvasCtx.drawImage(results.image, 0, 0, processingCanvas.width, processingCanvas.height);
 
-      // Optionally draw pose landmarks.
+      // 2) Optionally draw pose landmarks
       if (results.poseLandmarks) {
-        drawConnectors(canvasCtx, results.poseLandmarks, Pose.POSE_CONNECTIONS, {
-          color: '#00FF00',
-          lineWidth: 4
-        });
-        drawLandmarks(canvasCtx, results.poseLandmarks, {
-          color: '#FF0000',
-          lineWidth: 2
-        });
+        // drawConnectors(canvasCtx, results.poseLandmarks, Pose.POSE_CONNECTIONS, {
+        //   color: "#00FF00",
+        //   lineWidth: 4
+        // });
+        // drawLandmarks(canvasCtx, results.poseLandmarks, {
+        //   color: "#FF0000",
+        //   lineWidth: 2
+        // });
       }
 
-      // Only overlay the shirt if we have both landmarks and the shirt image.
-      if (results.poseLandmarks && shirtImg.complete) {
-        let frameW = processingCanvas.width;
-        let frameH = processingCanvas.height;
+      // 3) Overlay the selected shirt if user did NOT choose "None"
+      if (results.poseLandmarks && selectedShirtSrc !== "none") {
+        // If the shirt image is not yet set to the newly-selected path, do so now
+        if (shirtImg.src !== selectedShirtSrc) {
+          shirtImg.src = selectedShirtSrc;
+        }
 
-        // In MediaPipe Pose JS, landmark indices:
-        // Left Shoulder: 11, Right Shoulder: 12, Left Hip: 23.
-        let lm = results.poseLandmarks;
-        let ls = [lm[11].x * frameW, lm[11].y * frameH];
-        let rs = [lm[12].x * frameW, lm[12].y * frameH];
-        let lh = [lm[23].x * frameW, lm[23].y * frameH];
+        // Make sure the shirt is actually loaded before drawing
+        if (shirtImg.complete) {
+          let frameW = processingCanvas.width;
+          let frameH = processingCanvas.height;
 
-        // Define destination points from landmarks.
-        let dstPts = [ls, rs, lh];
+          // Landmark indices: left shoulder (11), right shoulder (12), left hip (23)
+          let lm = results.poseLandmarks;
+          let ls = [lm[11].x * frameW, lm[11].y * frameH];
+          let rs = [lm[12].x * frameW, lm[12].y * frameH];
+          let lh = [lm[23].x * frameW, lm[23].y * frameH];
 
-        // Define source points from the shirt image.
-        // Adjust these multipliers as needed for your shirt.
-        let shirtW = shirtImg.width;
-        let shirtH = shirtImg.height;
-        let srcPts = [
-          [shirtW * 0.15, shirtH * 0.15],  // left shoulder on shirt image
-          [shirtW * 0.85, shirtH * 0.15],  // right shoulder
-          [shirtW * 0.25, shirtH * 0.85]   // left hip
-        ];
+          let dstPts = [ls, rs, lh];
 
-        // Compute the affine transform.
-        let t = computeAffineTransform(srcPts, dstPts);
-        if (t) {
-          // Save the current state.
-          canvasCtx.save();
-          // Set the transformation matrix.
-          canvasCtx.setTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
-          // Draw the shirt image.
-          canvasCtx.drawImage(shirtImg, 0, 0);
-          // Restore the context.
-          canvasCtx.restore();
+          // Source points from the shirt image (tweak as needed)
+          let w = shirtImg.width;
+          let h = shirtImg.height;
+          let srcPts = [
+            [w * 0.15, h * 0.15], // approximate left shoulder
+            [w * 0.85, h * 0.15], // approximate right shoulder
+            [w * 0.25, h * 0.85]  // approximate left hip
+          ];
+
+          let t = computeAffineTransform(srcPts, dstPts);
+          if (t) {
+            canvasCtx.save();
+            canvasCtx.setTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
+            canvasCtx.drawImage(shirtImg, 0, 0);
+            canvasCtx.restore();
+          }
         }
       }
     });
 
-    // Use MediaPipe's Camera utility to process frames.
+    // Use MediaPipe's Camera utility to process frames
     const mpCamera = new Camera(rawVideo, {
-      onFrame: async () => { await pose.send({ image: rawVideo }); },
+      onFrame: async () => {
+        await pose.send({ image: rawVideo });
+      },
       width: processingCanvas.width,
       height: processingCanvas.height
     });
     mpCamera.start();
 
-    // Capture the processed canvas as a stream (30 FPS).
+    // Capture the processed canvas as a new stream (30 FPS)
     var processedStream = processingCanvas.captureStream(30);
     localVideo.srcObject = processedStream;
     localVideo.play();
 
-    // Set up the WebRTC connection to broadcast the processed stream.
+    // Set up WebRTC
     yourConn = new RTCPeerConnection(peerConnectionConfig);
-    console.log('connection state inside getUserMedia', yourConn.connectionState);
     yourConn.onicecandidate = function (event) {
       if (event.candidate) {
         send({ type: "candidate", candidate: event.candidate });
       }
     };
     yourConn.ontrack = gotRemoteStream;
-    yourConn.addStream(processedStream);
+
+    // Add the processed (overlaid) video track + original mic track
+    // If you want the original audio track from 'stream':
+    const videoTrack = processedStream.getVideoTracks()[0];
+    const audioTrack = stream.getAudioTracks()[0];
+    if (audioTrack) {
+      // Make a new stream with processed video + original audio
+      const combinedStream = new MediaStream([videoTrack, audioTrack]);
+      yourConn.addStream(combinedStream);
+    } else {
+      // Fallback if no audio track
+      yourConn.addStream(processedStream);
+    }
   };
 }
 
+// -------------------------------------------------------
+// 5) Call / Answer events
+// -------------------------------------------------------
 callBtn.addEventListener("click", function () {
-  var callToUsername = document.getElementById('callToUsernameInput').value;
+  var callToUsername = callToUsernameInput.value.trim();
   if (callToUsername.length > 0) {
     connectedUser = callToUsername;
-    yourConn.createOffer(function (offer) {
-      send({ type: "offer", offer: offer });
-      yourConn.setLocalDescription(offer);
-    }, function (error) {
-      alert("Error when creating an offer: " + error);
-    });
-    document.getElementById('callOngoing').style.display = 'block';
-    document.getElementById('callInitiator').style.display = 'none';
+    yourConn.createOffer().then(
+      (offer) => {
+        yourConn.setLocalDescription(offer);
+        send({ type: "offer", offer: offer });
+      },
+      (error) => {
+        alert("Error when creating an offer: " + error);
+      }
+    );
+    document.getElementById("callOngoing").style.display = "block";
+    document.getElementById("callInitiator").style.display = "none";
   } else {
     alert("Username can't be blank!");
   }
 });
 
+answerBtn.addEventListener("click", function () {
+  document.getElementById("callReceiver").style.display = "none";
+  document.getElementById("callOngoing").style.display = "block";
+});
+
+declineBtn.addEventListener("click", function () {
+  document.getElementById("callInitiator").style.display = "block";
+  document.getElementById("callReceiver").style.display = "none";
+});
+
+hangUpBtn.addEventListener("click", function () {
+  send({ type: "leave" });
+  handleLeave();
+  document.getElementById("callOngoing").style.display = "none";
+  document.getElementById("callInitiator").style.display = "block";
+});
+
+// -------------------------------------------------------
+// 6) WebSocket message handling
+// -------------------------------------------------------
 function gotMessageFromServer(message) {
   var data = JSON.parse(message.data);
   switch (data.type) {
@@ -317,52 +406,35 @@ function gotMessageFromServer(message) {
     default:
       break;
   }
-  serverConnection.onerror = function (err) {
-    console.log("Got error", err);
-  };
 }
 
 function send(msg) {
-  if (connectedUser) { msg.name = connectedUser; }
+  if (connectedUser) {
+    msg.name = connectedUser;
+  }
   serverConnection.send(JSON.stringify(msg));
 }
 
 function handleOffer(offer, name) {
-  document.getElementById('callInitiator').style.display = 'none';
-  document.getElementById('callReceiver').style.display = 'block';
+  connectedUser = name;
+  yourConn.setRemoteDescription(new RTCSessionDescription(offer));
+  document.getElementById("callInitiator").style.display = "none";
+  document.getElementById("callReceiver").style.display = "block";
 
-  answerBtn.addEventListener("click", function () {
-    connectedUser = name;
-    yourConn.setRemoteDescription(new RTCSessionDescription(offer));
+  answerBtn.onclick = function () {
+    yourConn.createAnswer().then(
+      (answer) => {
+        yourConn.setLocalDescription(answer);
+        send({ type: "answer", answer: answer });
+      },
+      (error) => {
+        alert("Error when creating an answer");
+      }
+    );
 
-    yourConn.createAnswer(function (answer) {
-      yourConn.setLocalDescription(answer);
-      send({ type: "answer", answer: answer });
-
-      // "Cheat": Assign the local processed stream to remote video, but flip it.
-      remoteVideo.srcObject = localVideo.srcObject;
-      remoteVideo.style.transform = "scaleX(-1)";
-    }, function (error) {
-      alert("Error when creating an answer");
-    });
-
-    document.getElementById('callReceiver').style.display = 'none';
-    document.getElementById('callOngoing').style.display = 'block';
-  });
-
-  declineBtn.addEventListener("click", function () {
-    document.getElementById('callInitiator').style.display = 'block';
-    document.getElementById('callReceiver').style.display = 'none';
-  });
-}
-
-
-function gotRemoteStream(event) {
-  remoteVideo.srcObject = event.streams[0];
-}
-
-function errorHandler(error) {
-  console.log(error);
+    document.getElementById("callReceiver").style.display = "none";
+    document.getElementById("callOngoing").style.display = "block";
+  };
 }
 
 function handleAnswer(answer) {
@@ -373,17 +445,15 @@ function handleCandidate(candidate) {
   yourConn.addIceCandidate(new RTCIceCandidate(candidate));
 }
 
-hangUpBtn.addEventListener("click", function () {
-  send({ type: "leave" });
-  handleLeave();
-  document.getElementById('callOngoing').style.display = 'none';
-  document.getElementById('callInitiator').style.display = 'block';
-});
-
 function handleLeave() {
   connectedUser = null;
   remoteVideo.srcObject = null;
   yourConn.close();
   yourConn.onicecandidate = null;
   yourConn.onaddstream = null;
+}
+
+// General error handler
+function errorHandler(error) {
+  console.log(error);
 }
