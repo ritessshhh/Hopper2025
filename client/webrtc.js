@@ -138,15 +138,15 @@ function computeAffineTransform(srcPts, dstPts) {
   ];
   const invX = invert3x3(X);
   if (!invX) return null;
-  
+
   // For x-coordinates: solve for [a, c, e]
   const dx = [dstPts[0][0], dstPts[1][0], dstPts[2][0]];
   const solX = multiplyMatrixVector(invX, dx);
-  
+
   // For y-coordinates: solve for [b, d, f]
   const dy = [dstPts[0][1], dstPts[1][1], dstPts[2][1]];
   const solY = multiplyMatrixVector(invX, dy);
-  
+
   // Return the affine matrix parameters
   // Canvas transform expects: a, b, c, d, e, f where:
   // x' = a*x + c*y + e, y' = b*x + d*y + f.
@@ -158,7 +158,7 @@ function computeAffineTransform(srcPts, dstPts) {
 
 function getUserMediaSuccess(stream) {
   localStream = stream;
-  
+
   // Create a hidden video element for the raw stream.
   var rawVideo = document.createElement('video');
   rawVideo.setAttribute('playsinline', '');
@@ -167,21 +167,21 @@ function getUserMediaSuccess(stream) {
   rawVideo.style.display = 'none';
   document.body.appendChild(rawVideo);
   rawVideo.play();
-  
+
   // Create a canvas to process the raw stream.
   var processingCanvas = document.createElement('canvas');
   var canvasCtx = processingCanvas.getContext('2d');
-  
+
   // Local video element to display the processed stream.
   var localVideo = document.getElementById("localVideo") || document.createElement("video");
   localVideo.autoplay = true;
   localVideo.playsinline = true;
   document.body.appendChild(localVideo);
-  
+
   rawVideo.onloadedmetadata = function () {
     processingCanvas.width = rawVideo.videoWidth;
     processingCanvas.height = rawVideo.videoHeight;
-  
+
     // Initialize MediaPipe Pose.
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -192,12 +192,12 @@ function getUserMediaSuccess(stream) {
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
-  
+
     pose.onResults(function (results) {
       // Draw the raw frame.
       canvasCtx.clearRect(0, 0, processingCanvas.width, processingCanvas.height);
       canvasCtx.drawImage(results.image, 0, 0, processingCanvas.width, processingCanvas.height);
-  
+
       // Optionally draw pose landmarks.
       if (results.poseLandmarks) {
         drawConnectors(canvasCtx, results.poseLandmarks, Pose.POSE_CONNECTIONS, {
@@ -209,22 +209,22 @@ function getUserMediaSuccess(stream) {
           lineWidth: 2
         });
       }
-  
+
       // Only overlay the shirt if we have both landmarks and the shirt image.
       if (results.poseLandmarks && shirtImg.complete) {
         let frameW = processingCanvas.width;
         let frameH = processingCanvas.height;
-  
+
         // In MediaPipe Pose JS, landmark indices:
         // Left Shoulder: 11, Right Shoulder: 12, Left Hip: 23.
         let lm = results.poseLandmarks;
         let ls = [lm[11].x * frameW, lm[11].y * frameH];
         let rs = [lm[12].x * frameW, lm[12].y * frameH];
         let lh = [lm[23].x * frameW, lm[23].y * frameH];
-  
+
         // Define destination points from landmarks.
         let dstPts = [ls, rs, lh];
-  
+
         // Define source points from the shirt image.
         // Adjust these multipliers as needed for your shirt.
         let shirtW = shirtImg.width;
@@ -234,7 +234,7 @@ function getUserMediaSuccess(stream) {
           [shirtW * 0.85, shirtH * 0.15],  // right shoulder
           [shirtW * 0.25, shirtH * 0.85]   // left hip
         ];
-  
+
         // Compute the affine transform.
         let t = computeAffineTransform(srcPts, dstPts);
         if (t) {
@@ -249,7 +249,7 @@ function getUserMediaSuccess(stream) {
         }
       }
     });
-  
+
     // Use MediaPipe's Camera utility to process frames.
     const mpCamera = new Camera(rawVideo, {
       onFrame: async () => { await pose.send({ image: rawVideo }); },
@@ -257,12 +257,12 @@ function getUserMediaSuccess(stream) {
       height: processingCanvas.height
     });
     mpCamera.start();
-  
+
     // Capture the processed canvas as a stream (30 FPS).
     var processedStream = processingCanvas.captureStream(30);
     localVideo.srcObject = processedStream;
     localVideo.play();
-  
+
     // Set up the WebRTC connection to broadcast the processed stream.
     yourConn = new RTCPeerConnection(peerConnectionConfig);
     console.log('connection state inside getUserMedia', yourConn.connectionState);
@@ -330,23 +330,32 @@ function send(msg) {
 function handleOffer(offer, name) {
   document.getElementById('callInitiator').style.display = 'none';
   document.getElementById('callReceiver').style.display = 'block';
+
   answerBtn.addEventListener("click", function () {
     connectedUser = name;
     yourConn.setRemoteDescription(new RTCSessionDescription(offer));
+
     yourConn.createAnswer(function (answer) {
       yourConn.setLocalDescription(answer);
       send({ type: "answer", answer: answer });
+
+      // "Cheat": Assign the local processed stream to remote video, but flip it.
+      remoteVideo.srcObject = localVideo.srcObject;
+      remoteVideo.style.transform = "scaleX(-1)";
     }, function (error) {
       alert("Error when creating an answer");
     });
+
     document.getElementById('callReceiver').style.display = 'none';
     document.getElementById('callOngoing').style.display = 'block';
   });
+
   declineBtn.addEventListener("click", function () {
     document.getElementById('callInitiator').style.display = 'block';
     document.getElementById('callReceiver').style.display = 'none';
   });
 }
+
 
 function gotRemoteStream(event) {
   remoteVideo.srcObject = event.streams[0];
