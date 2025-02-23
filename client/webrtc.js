@@ -76,11 +76,90 @@ function handleLogin(success, allUsers) {
   }
 }
 
-function getUserMediaSuccess(stream) {
-  // Save the raw camera stream.
-  localStream = stream;
+let shirtImg = new Image();
+shirtImg.onload = () => {
+  console.log("Shirt image loaded:", shirtImg.width, shirtImg.height);
+};
+shirtImg.onerror = (e) => {
+  console.log("Failed to load shirt image", e);
+};
+shirtImg.src = "./images/redpolo.png"
 
-  // Create a hidden video element to play the raw stream.
+// --- Helper functions for affine transform computation ---
+
+// Invert a 3x3 matrix represented as an array of 9 numbers (row-major order)
+function invert3x3(m) {
+  const det =
+    m[0] * (m[4] * m[8] - m[5] * m[7]) -
+    m[1] * (m[3] * m[8] - m[5] * m[6]) +
+    m[2] * (m[3] * m[7] - m[4] * m[6]);
+  if (det === 0) return null;
+  const invDet = 1 / det;
+  return [
+    (m[4] * m[8] - m[5] * m[7]) * invDet,
+    (m[2] * m[7] - m[1] * m[8]) * invDet,
+    (m[1] * m[5] - m[2] * m[4]) * invDet,
+    (m[5] * m[6] - m[3] * m[8]) * invDet,
+    (m[0] * m[8] - m[2] * m[6]) * invDet,
+    (m[2] * m[3] - m[0] * m[5]) * invDet,
+    (m[3] * m[7] - m[4] * m[6]) * invDet,
+    (m[1] * m[6] - m[0] * m[7]) * invDet,
+    (m[0] * m[4] - m[1] * m[3]) * invDet
+  ];
+}
+
+// Multiply a 3x3 matrix (as array of 9 numbers) by a 3-element vector.
+function multiplyMatrixVector(m, v) {
+  return [
+    m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+    m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+    m[6] * v[0] + m[7] * v[1] + m[8] * v[2]
+  ];
+}
+
+/**
+ * Given three source points and three destination points (each as [x, y]),
+ * compute the affine transform parameters [a, b, c, d, e, f] so that:
+ *
+ *   x' = a * x + c * y + e
+ *   y' = b * x + d * y + f
+ *
+ * @param {Array} srcPts - Array of 3 points, each [x, y]
+ * @param {Array} dstPts - Array of 3 points, each [x, y]
+ * @returns {Array|null}  - Affine parameters [a, b, c, d, e, f] or null if not invertible.
+ */
+function computeAffineTransform(srcPts, dstPts) {
+  // Build matrix X from source points:
+  // Each row is [x, y, 1]
+  const X = [
+    srcPts[0][0], srcPts[0][1], 1,
+    srcPts[1][0], srcPts[1][1], 1,
+    srcPts[2][0], srcPts[2][1], 1
+  ];
+  const invX = invert3x3(X);
+  if (!invX) return null;
+  
+  // For x-coordinates: solve for [a, c, e]
+  const dx = [dstPts[0][0], dstPts[1][0], dstPts[2][0]];
+  const solX = multiplyMatrixVector(invX, dx);
+  
+  // For y-coordinates: solve for [b, d, f]
+  const dy = [dstPts[0][1], dstPts[1][1], dstPts[2][1]];
+  const solY = multiplyMatrixVector(invX, dy);
+  
+  // Return the affine matrix parameters
+  // Canvas transform expects: a, b, c, d, e, f where:
+  // x' = a*x + c*y + e, y' = b*x + d*y + f.
+  return [solX[0], solY[0], solX[1], solY[1], solX[2], solY[2]];
+}
+
+
+// ----------------- getUserMediaSuccess -----------------
+
+function getUserMediaSuccess(stream) {
+  localStream = stream;
+  
+  // Create a hidden video element for the raw stream.
   var rawVideo = document.createElement('video');
   rawVideo.setAttribute('playsinline', '');
   rawVideo.muted = true;
@@ -88,16 +167,21 @@ function getUserMediaSuccess(stream) {
   rawVideo.style.display = 'none';
   document.body.appendChild(rawVideo);
   rawVideo.play();
-
+  
   // Create a canvas to process the raw stream.
   var processingCanvas = document.createElement('canvas');
   var canvasCtx = processingCanvas.getContext('2d');
-
-  // When rawVideo metadata is ready, set canvas size and start processing.
+  
+  // Local video element to display the processed stream.
+  var localVideo = document.getElementById("localVideo") || document.createElement("video");
+  localVideo.autoplay = true;
+  localVideo.playsinline = true;
+  document.body.appendChild(localVideo);
+  
   rawVideo.onloadedmetadata = function () {
     processingCanvas.width = rawVideo.videoWidth;
     processingCanvas.height = rawVideo.videoHeight;
-
+  
     // Initialize MediaPipe Pose.
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -108,11 +192,13 @@ function getUserMediaSuccess(stream) {
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
-
-    // Process each frame: clear canvas, draw raw image, then overlay landmarks.
+  
     pose.onResults(function (results) {
+      // Draw the raw frame.
       canvasCtx.clearRect(0, 0, processingCanvas.width, processingCanvas.height);
       canvasCtx.drawImage(results.image, 0, 0, processingCanvas.width, processingCanvas.height);
+  
+      // Optionally draw pose landmarks.
       if (results.poseLandmarks) {
         drawConnectors(canvasCtx, results.poseLandmarks, Pose.POSE_CONNECTIONS, {
           color: '#00FF00',
@@ -123,23 +209,60 @@ function getUserMediaSuccess(stream) {
           lineWidth: 2
         });
       }
+  
+      // Only overlay the shirt if we have both landmarks and the shirt image.
+      if (results.poseLandmarks && shirtImg.complete) {
+        let frameW = processingCanvas.width;
+        let frameH = processingCanvas.height;
+  
+        // In MediaPipe Pose JS, landmark indices:
+        // Left Shoulder: 11, Right Shoulder: 12, Left Hip: 23.
+        let lm = results.poseLandmarks;
+        let ls = [lm[11].x * frameW, lm[11].y * frameH];
+        let rs = [lm[12].x * frameW, lm[12].y * frameH];
+        let lh = [lm[23].x * frameW, lm[23].y * frameH];
+  
+        // Define destination points from landmarks.
+        let dstPts = [ls, rs, lh];
+  
+        // Define source points from the shirt image.
+        // Adjust these multipliers as needed for your shirt.
+        let shirtW = shirtImg.width;
+        let shirtH = shirtImg.height;
+        let srcPts = [
+          [shirtW * 0.15, shirtH * 0.15],  // left shoulder on shirt image
+          [shirtW * 0.85, shirtH * 0.15],  // right shoulder
+          [shirtW * 0.25, shirtH * 0.85]   // left hip
+        ];
+  
+        // Compute the affine transform.
+        let t = computeAffineTransform(srcPts, dstPts);
+        if (t) {
+          // Save the current state.
+          canvasCtx.save();
+          // Set the transformation matrix.
+          canvasCtx.setTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
+          // Draw the shirt image.
+          canvasCtx.drawImage(shirtImg, 0, 0);
+          // Restore the context.
+          canvasCtx.restore();
+        }
+      }
     });
-
-    // Use MediaPipe's Camera utility to continuously process frames.
+  
+    // Use MediaPipe's Camera utility to process frames.
     const mpCamera = new Camera(rawVideo, {
       onFrame: async () => { await pose.send({ image: rawVideo }); },
       width: processingCanvas.width,
       height: processingCanvas.height
     });
     mpCamera.start();
-
-    // Capture a new stream from the processing canvas (this stream shows the landmarks).
-    var processedStream = processingCanvas.captureStream(30); // 30 FPS
-
-    // Use the processed stream for local display.
+  
+    // Capture the processed canvas as a stream (30 FPS).
+    var processedStream = processingCanvas.captureStream(30);
     localVideo.srcObject = processedStream;
     localVideo.play();
-
+  
     // Set up the WebRTC connection to broadcast the processed stream.
     yourConn = new RTCPeerConnection(peerConnectionConfig);
     console.log('connection state inside getUserMedia', yourConn.connectionState);

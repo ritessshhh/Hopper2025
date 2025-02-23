@@ -17,6 +17,7 @@ var allUsers = [];
 
 // ----------------------------------------------------------------------------------------
 
+const path = require('path');
 // Create a server for the client HTML page
 const handleRequest = function (request, response) {
    console.log('request received: ' + request.url);
@@ -27,6 +28,24 @@ const handleRequest = function (request, response) {
    } else if (request.url === '/webrtc.js') {
       response.writeHead(200, { 'Content-Type': 'application/javascript' });
       response.end(fs.readFileSync('client/webrtc.js'));
+   } else if (request.url.startsWith('/images/')) {
+      // Determine the file's extension to set the correct content-type
+      let ext = path.extname(request.url);
+      let contentType = 'image/png'; // default
+      if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.gif') contentType = 'image/gif';
+      
+      // Adjust the path if your images are stored under a specific directory, e.g., 'client/images'
+      let filePath = path.join('client', request.url);
+      fs.readFile(filePath, function(err, data) {
+         if (err) {
+            response.writeHead(404);
+            response.end('File not found');
+         } else {
+            response.writeHead(200, { 'Content-Type': contentType });
+            response.end(data);
+         }
+      });
    }
 };
 
